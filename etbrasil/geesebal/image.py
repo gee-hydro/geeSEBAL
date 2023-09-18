@@ -123,24 +123,24 @@ class Image():
         self.sun_elevation=ee.Number(90).subtract(self.azimuth_angle)
 
         #METEOROLOGY PARAMETERS
-        col_meteorology= get_meteorology(self.image,self.time_start);
+        col_meteorology= get_meteorology(self.image,self.time_start)
 
         #AIR TEMPERATURE [C]
-        self.T_air = col_meteorology.select('AirT_G');
+        self.T_air = col_meteorology.select('AirT_G')
 
         #WIND SPEED [M S-1]
-        self.ux= col_meteorology.select('ux_G');
+        self.ux= col_meteorology.select('ux_G')
 
         #RELATIVE HUMIDITY [%]
-        self.UR = col_meteorology.select('RH_G');
+        self.UR = col_meteorology.select('RH_G')
 
         #NET RADIATION 24H [W M-2]
-        self.Rn24hobs = col_meteorology.select('Rn24h_G');
+        self.Rn24hobs = col_meteorology.select('Rn24h_G')
 
         #SRTM DATA ELEVATION
         SRTM_ELEVATION ='USGS/SRTMGL1_003'
-        self.srtm = ee.Image(SRTM_ELEVATION).clip(self.geometryReducer);
-        self.z_alt = self.srtm.select('elevation');
+        self.srtm = ee.Image(SRTM_ELEVATION).clip(self.geometryReducer)
+        self.z_alt = self.srtm.select('elevation')
 
         #GET IMAGE
         self.image=self.image.first()
