@@ -47,8 +47,8 @@ class Image():
         self.image = ee.Image(image)
         self._index=self.image.get('system:index')
         self.cloud_cover=self.image.get('CLOUD_COVER')
-        self.LANDSAT_ID=self.image.get('LANDSAT_ID').getInfo()
-        self.landsat_version=self.image.get('SATELLITE').getInfo()
+        self.LANDSAT_ID=self.image.get('LANDSAT_ID')#.getInfo()
+        self.landsat_version= ee.String(self.image.get('SATELLITE'))
         self.azimuth_angle=self.image.get('SOLAR_ZENITH_ANGLE')
         self.time_start=self.image.get('system:time_start')
         self._date=ee.Date(self.time_start)
@@ -77,7 +77,7 @@ class Image():
                 .filterDate(self._date,self._date.advance(1,'day'))
                 .filter(ee.Filter.eq("WRS_PATH", self.WRS_PATH))
                 .filter(ee.Filter.eq("WRS_ROW", self.WRS_ROW))
-                .filter(ee.Filter.eq("SPACECRAFT_ID", self.image.get("SATELLITE")))
+                .filter(ee.Filter.eq("SPACECRAFT_ID", self.landsat_version))
                 .map(ee.Algorithms.Landsat.calibratedRadiance)
             )
         l5_rad = ee.ImageCollection(
@@ -103,30 +103,18 @@ class Image():
             "LANDSAT_8": ee.List(["UB","B","GR","R","NIR","SWIR_1","SWIR_2","BRT","pixel_qa"])})
 
         self.image = self.image.select(
-            band_numbers.get(self.image.get("SATELLITE")), 
-            band_names.get(self.image.get("SATELLITE")))
+            band_numbers.get(self.landsat_version), 
+            band_names.get(self.landsat_version))
 
-        #LANDSAT IMAGE
-        if self.landsat_version == 'LANDSAT_5':
-         #CLOUD REMOTION
-             self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
-
-         #ALBEDO TASUMI ET AL. (2008)
-             self.image=self.image.map(f_albedoL5L7)
-
-        elif self.landsat_version == 'LANDSAT_7':
-         #CLOUD REMOVAL
-             self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
-
-         #ALBEDO TASUMI ET AL. (2008)
-             self.image=self.image.map(f_albedoL5L7)
-
-        else:
-         #CLOUD REMOVAL
-            self.image=ee.ImageCollection(self.image).map(f_cloudMaskL8_SR)
-
-         #ALBEDO TASUMI ET AL. (2008) METHOD WITH KE ET AL. (2016) COEFFICIENTS
-            self.image=self.image.map(f_albedoL8)
+        # CLOUD MASK and ALBEDO TASUMI ET AL. (2008) 
+        self.image = ee.ImageCollection(
+            ee.Image(
+            ee.Algorithms.If(
+                self.landsat_version.equals("LANDSAT_8"),
+                f_albedoL8(f_cloudMaskL8_SR(self.image)),
+                f_albedoL5L7(f_cloudMaskL457_SR(self.image))
+            ))
+        )
 
         #GEOMETRY
         self.geometryReducer=self.image.geometry().bounds().getInfo()
@@ -195,5 +183,5 @@ class Image():
         #DAILY EVAPOTRANSPIRATION (ET_24H) [MM DAY-1]
         self.image=fexp_et(self.image,self.Rn24hobs)
 
-        self.NAME_FINAL=self.LANDSAT_ID[:5]+self.LANDSAT_ID[10:17]+self.LANDSAT_ID[17:25]
-        self.image=self.image.addBands([self.image.select('ET_24h').rename(self.NAME_FINAL)])
+        #self.NAME_FINAL=self.LANDSAT_ID[:5]+self.LANDSAT_ID[10:17]+self.LANDSAT_ID[17:25]
+        #self.image=self.image.addBands([self.image.select('ET_24h').rename(self.NAME_FINAL)])
