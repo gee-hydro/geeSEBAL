@@ -59,7 +59,10 @@ class Image():
         self._minuts = ee.Number(self._date.get('minutes'))
         self.crs = self.image.projection().crs()
         self.transform = ee.List(ee.Dictionary(ee.Algorithms.Describe(self.image.projection())).get('transform'))
-        self.date_string=self._date.format('YYYY-MM-dd').getInfo()
+        self.date_string=self._date.format('YYYY-MM-dd')
+
+        self.WRS_PATH = self.image.get("WRS_PATH")
+        self.WRS_ROW = self.image.get("WRS_ROW")
 
         #ENDMEMBERS
         self.p_top_NDVI=ee.Number(NDVI_cold)
@@ -67,14 +70,31 @@ class Image():
         self.p_lowest_NDVI=ee.Number(NDVI_hot)
         self.p_hottest_Ts=ee.Number(Ts_hot)
 
+        # GET CALIBRATED RADIANCE FROM TOA IMAGE
+        # Note: no longer defining self.image_toa
+        def rad_collection(img_collection):
+            return (ee.ImageCollection(img_collection)
+                .filterDate(self._date,self._date.advance(1,'day'))
+                .filter(ee.Filter.eq("WRS_PATH", self.WRS_PATH))
+                .filter(ee.Filter.eq("WRS_ROW", self.WRS_ROW))
+                .filter(ee.Filter.eq("SPACECRAFT_ID", self.image.get("SATELLITE")))
+                .map(ee.Algorithms.Landsat.calibratedRadiance)
+            )
+        l5_rad = ee.ImageCollection(
+            rad_collection("LANDSAT/LT05/C01/T1")
+        ).select([5],["T_RAD"])
+        l7_rad = ee.ImageCollection(
+            rad_collection("LANDSAT/LE07/C01/T1")
+        ).select([5],["T_RAD"])
+        l8_rad = ee.ImageCollection(
+            rad_collection("LANDSAT/LC08/C01/T1")
+        ).select([9],["T_RAD"])
+        col_rad = l8_rad.merge(l7_rad).merge(l5_rad)
+        self.col_rad = self.image.addBands(col_rad.first())
+
         #LANDSAT IMAGE
         if self.landsat_version == 'LANDSAT_5':
              self.image=self.image.select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-             self.image_toa=ee.Image('LANDSAT/LT05/C01/T1/'+ self._index.getInfo())
-
-         #GET CALIBRATED RADIANCE
-             self.col_rad = ee.Algorithms.Landsat.calibratedRadiance(self.image_toa);
-             self.col_rad = self.image.addBands(self.col_rad.select([5],["T_RAD"]))
 
          #CLOUD REMOTION
              self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
@@ -84,11 +104,6 @@ class Image():
 
         elif self.landsat_version == 'LANDSAT_7':
              self.image=self.image.select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-             self.image_toa=ee.Image('LANDSAT/LE07/C01/T1/'+ self._index.getInfo())
-
-         #GET CALIBRATED RADIANCE
-             self.col_rad = ee.Algorithms.Landsat.calibratedRadiance(self.image_toa);
-             self.col_rad = self.image.addBands(self.col_rad.select([5],["T_RAD"]))
 
          #CLOUD REMOVAL
              self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
@@ -98,11 +113,6 @@ class Image():
 
         else:
             self.image = self.image.select([0,1,2,3,4,5,6,7,10],["UB","B","GR","R","NIR","SWIR_1","SWIR_2","BRT","pixel_qa"])
-            self.image_toa=ee.Image('LANDSAT/LC08/C01/T1/'+self._index.getInfo())
-
-         #GET CALIBRATED RADIANCE
-            self.col_rad = ee.Algorithms.Landsat.calibratedRadiance(self.image_toa)
-            self.col_rad = self.image.addBands(self.col_rad.select([9],["T_RAD"]))
 
          #CLOUD REMOVAL
             self.image=ee.ImageCollection(self.image).map(f_cloudMaskL8_SR)
