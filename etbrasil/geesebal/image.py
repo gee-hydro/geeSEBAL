@@ -92,10 +92,22 @@ class Image():
         col_rad = l8_rad.merge(l7_rad).merge(l5_rad)
         self.col_rad = self.image.addBands(col_rad.first())
 
+        #RENAME LANDSAT BANDS
+        band_numbers = ee.Dictionary({
+            "LANDSAT_5": ee.List([0,1,2,3,4,5,6,9]),
+            "LANDSAT_7": ee.List([0,1,2,3,4,5,6,9]), 
+            "LANDSAT_8": ee.List([0,1,2,3,4,5,6,7,10])})
+        band_names = ee.Dictionary({
+            "LANDSAT_5": ee.List(["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"]),
+            "LANDSAT_7": ee.List(["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"]), 
+            "LANDSAT_8": ee.List(["UB","B","GR","R","NIR","SWIR_1","SWIR_2","BRT","pixel_qa"])})
+
+        self.image = self.image.select(
+            band_numbers.get(self.image.get("SATELLITE")), 
+            band_names.get(self.image.get("SATELLITE")))
+
         #LANDSAT IMAGE
         if self.landsat_version == 'LANDSAT_5':
-             self.image=self.image.select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-
          #CLOUD REMOTION
              self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
 
@@ -103,8 +115,6 @@ class Image():
              self.image=self.image.map(f_albedoL5L7)
 
         elif self.landsat_version == 'LANDSAT_7':
-             self.image=self.image.select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-
          #CLOUD REMOVAL
              self.image=ee.ImageCollection(self.image).map(f_cloudMaskL457_SR)
 
@@ -112,8 +122,6 @@ class Image():
              self.image=self.image.map(f_albedoL5L7)
 
         else:
-            self.image = self.image.select([0,1,2,3,4,5,6,7,10],["UB","B","GR","R","NIR","SWIR_1","SWIR_2","BRT","pixel_qa"])
-
          #CLOUD REMOVAL
             self.image=ee.ImageCollection(self.image).map(f_cloudMaskL8_SR)
 
