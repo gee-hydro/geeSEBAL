@@ -47,7 +47,7 @@ class Image():
         self.image = ee.Image(image)
         self._index=self.image.get('system:index')
         self.cloud_cover=self.image.get('CLOUD_COVER')
-        self.LANDSAT_ID=self.image.get('LANDSAT_ID')#.getInfo()
+        self.LANDSAT_ID=self.image.get('LANDSAT_ID')
         self.landsat_version= ee.String(self.image.get('SATELLITE'))
         self.azimuth_angle=self.image.get('SOLAR_ZENITH_ANGLE')
         self.time_start=self.image.get('system:time_start')
@@ -117,8 +117,7 @@ class Image():
         )
 
         #GEOMETRY
-        self.geometryReducer=self.image.geometry().bounds().getInfo()
-        self.geometry_download=self.geometryReducer['coordinates']
+        self.geometryReducer=self.image.geometry().bounds()
         self.camada_clip=self.image.select('BRT').first()
 
         self.sun_elevation=ee.Number(90).subtract(self.azimuth_angle)
@@ -156,7 +155,7 @@ class Image():
         self.d_cold_pixel=fexp_cold_pixel(self.image, self.geometryReducer, self.p_top_NDVI, self.p_coldest_Ts)
 
         #COLD PIXEL NUMBER
-        self.n_Ts_cold = ee.Number(self.d_cold_pixel.get('temp').getInfo())
+        self.n_Ts_cold = ee.Number(self.d_cold_pixel.get('temp'))
 
         #INSTANTANEOUS OUTGOING LONG-WAVE RADIATION [W M-2]
         self.image=fexp_radlong_up(self.image)
@@ -182,6 +181,3 @@ class Image():
 
         #DAILY EVAPOTRANSPIRATION (ET_24H) [MM DAY-1]
         self.image=fexp_et(self.image,self.Rn24hobs)
-
-        #self.NAME_FINAL=self.LANDSAT_ID[:5]+self.LANDSAT_ID[10:17]+self.LANDSAT_ID[17:25]
-        #self.image=self.image.addBands([self.image.select('ET_24h').rename(self.NAME_FINAL)])
