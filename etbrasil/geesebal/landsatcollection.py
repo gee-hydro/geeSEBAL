@@ -27,6 +27,40 @@ def set_landsat_index(img):
        by merging or joining collections"""
       return img.set({"LANDSAT_INDEX": img.get("system:index")})
 
+# Filter collection by path, row, and cloud cover
+def fexp_filter_PathRow(collection, start_date, end_date, n_path, n_row, th_cloud_cover):
+    return (collection
+            .filterDate(start_date, end_date)
+            .filterMetadata('WRS_PATH', 'equals', n_path)
+            .filterMetadata('WRS_ROW', 'equals', n_row)
+            .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover)
+            )
+
+# GET T_RAD band from T1 products by PATH ROW
+def fexp_trad_8PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
+    return (fexp_filter_PathRow(
+        ee.ImageCollection('LANDSAT/LC08/C01/T1'),
+        start_date, end_date, n_path, n_row, th_cloud_cover)
+            .map(ee.Algorithms.Landsat.calibratedRadiance)
+            .map(set_landsat_index)
+            .select([9],["T_RAD"]))
+
+def fexp_trad_7PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
+    return (fexp_filter_PathRow(
+        ee.ImageCollection('LANDSAT/LE07/C01/T1'),
+        start_date, end_date, n_path, n_row, th_cloud_cover)
+            .map(ee.Algorithms.Landsat.calibratedRadiance)
+            .map(set_landsat_index)
+            .select([5],["T_RAD"]))
+
+def fexp_trad_5PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
+    return (fexp_filter_PathRow(
+        ee.ImageCollection('LANDSAT/LT05/C01/T1'),
+        start_date, end_date, n_path, n_row, th_cloud_cover)
+            .map(ee.Algorithms.Landsat.calibratedRadiance)
+            .map(set_landsat_index)
+            .select([5],["T_RAD"]))
+
 #GET LANDSAT 8 COLLECTIONS BY PATH ROW
 def fexp_landsat_8PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
     col_SR_L8 =(ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
