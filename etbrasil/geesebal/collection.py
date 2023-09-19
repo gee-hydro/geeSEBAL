@@ -91,13 +91,19 @@ class Collection():
             return ee.Image.cat(feature.get("primary"), feature.get("secondary"))
         
         self.collection = join_by_landsat_index.map(get_img)  
+        self.count = self.collection.size()
+        self.CollectionList=self.collection.aggregate_array('system:index')
+        self.CollectionList_image = self.collection.aggregate_array('system:index')
 
         # Map the sebal algorithm to the image collection
         sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, 
                                 NDVI_hot=NDVI_hot, Ts_hot = Ts_hot,
                                 max_iterations=max_iterations)
-        self.collection_ET = self.collection.map(sebal_algorithm)
+        self.collection = self.collection.map(sebal_algorithm).sort("system:time_start")
 
-        self.CollectionList=self.collection.sort("system:time_start").aggregate_array('system:index')
-        self.CollectionList_image = self.collection.aggregate_array('system:index')
-        self.count = self.collection.size()
+        # Backwards compatibility: Collection_ET is an ee.Image
+        # with only the ET_24h band but renamed to {LANDSAT_INDEX}:
+        self.Collection_ET = (self.collection.select("ET_24h").toBands()
+                              .rename(
+                                  self.collection.aggregate_array("LANDSAT_INDEX")
+                              ))
