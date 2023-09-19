@@ -30,6 +30,65 @@ fexp_radshort_down, fexp_radlong_down, fexp_radbalance, fexp_soil_heat,fexp_sens
 from .endmembers import fexp_cold_pixel, fexp_hot_pixel
 from .evapotranspiration import fexp_et
 
+#SEBAL algorithm function
+def sebal(NDVI_cold=5, Ts_cold=20, NDVI_hot=10, Ts_hot=20):
+    """SEBAL algorithm to be mapped to a collection.
+    """
+    def fsebal(image):
+        p_top_NDVI=ee.Number(NDVI_cold) 
+        p_coldest_Ts=ee.Number(Ts_cold)
+        p_lowest_NDVI=ee.Number(NDVI_hot)
+        p_hottest_Ts=ee.Number(Ts_hot)
+
+        geometryReducer=image.geometry().bounds()
+        sun_elevation=ee.Number(90).subtract(image.get("SOLAR_ZENITH_ANGLE"))
+        col_meteorology=get_meteorology(ee.ImageCollection(image),image.get("system:time_start"))
+        T_air = col_meteorology.select("AirT_G") 
+        ux = col_meteorology.select("ux_G")      
+        UR = col_meteorology.select("RH_G")      
+        Rn24hobs = col_meteorology.select("Rn24h_G") 
+        SRTM_ELEVATION = "USGS/SRTMGL1_003"
+        srtm = ee.Image(SRTM_ELEVATION).clip(geometryReducer)
+        z_alt = srtm.select('elevation')
+
+        image = fexp_spec_ind(image)
+
+        _date = ee.Date(image.get("system:time_start"))
+        _hour=ee.Number(_date.get("hour"))
+        _minuts=ee.Number(_date.get("minutes"))
+
+        image = LST_DEM_correction(image, 
+        z_alt,
+        T_air,
+        UR,
+        sun_elevation,
+        _hour,
+        _minuts
+        )
+        d_cold_pixel = fexp_cold_pixel(image,geometryReducer,p_top_NDVI,p_coldest_Ts)
+
+        n_Ts_cold = ee.Number(d_cold_pixel.get('temp'))
+
+        image = fexp_radlong_up(image)
+        image = fexp_radshort_down(image,z_alt, T_air, UR, sun_elevation)
+        image = fexp_radlong_down(image, n_Ts_cold)  
+        image = fexp_radbalance(image)
+        image = fexp_soil_heat(image)
+
+        d_hot_pixel=fexp_hot_pixel(image, geometryReducer, p_lowest_NDVI, p_hottest_Ts)
+        date_string = _date.format("YYYY-MM-dd")
+
+        image = fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, 
+        d_hot_pixel, date_string, geometryReducer)
+        image = fexp_et(image, Rn24hobs)
+
+        # For backwards compatibility:
+        image = (image.addBands(T_air)
+                 .addBands(ux)
+                 .addBands(UR)
+                 .addBands(Rn24hobs))
+        return image
+    return fsebal
 
 #IMAGE FUNCTION
 class Image():
@@ -116,68 +175,20 @@ class Image():
             ))
         )
 
-        #GEOMETRY
+        sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot=Ts_hot)
+        self.image = sebal_algorithm(self.image.first())
+
+        # TODO -- decide whether to keep these or not in the Image object.
+        # They are not really needed anymore, but keeping here for
+        # backwards compatibility. However, some of these would
+        # require .getInfo() to be compatible with v0.1.1.  
+        self.T_air = self.image.get("AirT_G")
+        self.ux = self.image.get("ux_G")
+        self.UR = self.image.get("RH_G")
+        self.Rn24hobs = self.image.get("Rn24h_G")
         self.geometryReducer=self.image.geometry().bounds()
-        self.camada_clip=self.image.select('BRT').first()
-
+        self.camada_clip=self.image.select('BRT')
         self.sun_elevation=ee.Number(90).subtract(self.azimuth_angle)
-
-        #METEOROLOGY PARAMETERS
-        col_meteorology= get_meteorology(self.image,self.time_start)
-
-        #AIR TEMPERATURE [C]
-        self.T_air = col_meteorology.select('AirT_G')
-
-        #WIND SPEED [M S-1]
-        self.ux= col_meteorology.select('ux_G')
-
-        #RELATIVE HUMIDITY [%]
-        self.UR = col_meteorology.select('RH_G')
-
-        #NET RADIATION 24H [W M-2]
-        self.Rn24hobs = col_meteorology.select('Rn24h_G')
-
-        #SRTM DATA ELEVATION
-        SRTM_ELEVATION ='USGS/SRTMGL1_003'
-        self.srtm = ee.Image(SRTM_ELEVATION).clip(self.geometryReducer)
+        self.srtm = ee.Image('USGS/SRTMGL1_003').clip(self.geometryReducer)
         self.z_alt = self.srtm.select('elevation')
-
-        #GET IMAGE
-        self.image=self.image.first()
-
-        #SPECTRAL IMAGES (NDVI, EVI, SAVI, LAI, T_LST, e_0, e_NB, long, lat)
-        self.image=fexp_spec_ind(self.image)
-
-        #LAND SURFACE TEMPERATURE
-        self.image=LST_DEM_correction(self.image, self.z_alt, self.T_air, self.UR,self.sun_elevation,self._hour,self._minuts)
-
-        #COLD PIXEL
-        self.d_cold_pixel=fexp_cold_pixel(self.image, self.geometryReducer, self.p_top_NDVI, self.p_coldest_Ts)
-
-        #COLD PIXEL NUMBER
-        self.n_Ts_cold = ee.Number(self.d_cold_pixel.get('temp'))
-
-        #INSTANTANEOUS OUTGOING LONG-WAVE RADIATION [W M-2]
-        self.image=fexp_radlong_up(self.image)
-
-        #INSTANTANEOUS INCOMING SHORT-WAVE RADIATION [W M-2]
-        self.image=fexp_radshort_down(self.image,self.z_alt,self.T_air,self.UR, self.sun_elevation)
-
-        #INSTANTANEOUS INCOMING LONGWAVE RADIATION [W M-2]
-        self.image=fexp_radlong_down(self.image, self.n_Ts_cold)
-
-        #INSTANTANEOUS NET RADIATON BALANCE [W M-2]
-        self.image=fexp_radbalance(self.image)
-
-        #SOIL HEAT FLUX (G) [W M-2]
-        self.image=fexp_soil_heat(self.image)
-
-        #HOT PIXEL
         self.d_hot_pixel=fexp_hot_pixel(self.image, self.geometryReducer,self.p_lowest_NDVI, self.p_hottest_Ts)
-
-        #SENSIBLE HEAT FLUX (H) [W M-2]
-        self.image=fexp_sensible_heat_flux(self.image, self.ux, self.UR,self.Rn24hobs,self.n_Ts_cold,
-                                           self.d_hot_pixel, self.date_string,self.geometryReducer)
-
-        #DAILY EVAPOTRANSPIRATION (ET_24H) [MM DAY-1]
-        self.image=fexp_et(self.image,self.Rn24hobs)
