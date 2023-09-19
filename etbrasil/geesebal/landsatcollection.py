@@ -22,6 +22,11 @@ import ee
 #SURFACE REFLECTANCE
 #ATMOSPHERICALLY CORRECTED
 
+def set_landsat_index(img):
+      """Keeps system:index as LANDSAT_INDEX so that it doesn't get lost
+       by merging or joining collections"""
+      return img.set({"LANDSAT_INDEX": img.get("system:index")})
+
 #GET LANDSAT 8 COLLECTIONS BY PATH ROW
 def fexp_landsat_8PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
     col_SR_L8 =(ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
@@ -29,7 +34,8 @@ def fexp_landsat_8PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
                         .filterMetadata('WRS_PATH', 'equals', n_path)
                         .filterMetadata('WRS_ROW', 'equals', n_row)
                         .select([0,1,2,3,4,5,6,7,10],["UB","B","GR","R","NIR","SWIR_1","SWIR_2","BRT","pixel_qa"])
-                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover));
+                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover)
+                        .map(set_landsat_index))
     return col_SR_L8;
 
 #GET LANDSAT 7 COLLECTIONS BY PATH ROW
@@ -40,8 +46,8 @@ def fexp_landsat_7PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
                         .filterMetadata('WRS_PATH', 'equals', n_path)
                         .filterMetadata('WRS_ROW', 'equals', n_row)
                         .select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover));
-
+                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover)
+                        .map(set_landsat_index))
 
     return col_SR_L7;
 
@@ -52,7 +58,8 @@ def fexp_landsat_5PathRow(start_date,end_date,n_path, n_row,th_cloud_cover):
                         .filterMetadata('WRS_PATH', 'equals', n_path)
                         .filterMetadata('WRS_ROW', 'equals', n_row)
                         .select([0,1,2,3,4,5,6,9], ["B","GR","R","NIR","SWIR_1","BRT","SWIR_2", "pixel_qa"])
-                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover));
+                        .filterMetadata('CLOUD_COVER', 'less_than', th_cloud_cover)
+                        .map(set_landsat_index))
 
     return col_SR_L5;
 
