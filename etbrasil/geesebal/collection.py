@@ -21,7 +21,8 @@ import ee
 from datetime import date
 
 #FOLDERS
-from .landsatcollection import fexp_landsat_5PathRow,fexp_landsat_7PathRow, fexp_landsat_8PathRow
+from .landsatcollection import (fexp_landsat_5PathRow,fexp_landsat_7PathRow, fexp_landsat_8PathRow,
+fexp_trad_5PathRow, fexp_trad_7PathRow, fexp_trad_8PathRow)
 from .masks import (f_cloudMaskL457_SR,f_cloudMaskL8_SR,f_albedoL5L7,f_albedoL8)
 from .meteorology import get_meteorology
 from .tools import (fexp_spec_ind, fexp_lst_export,fexp_radlong_up, LST_DEM_correction,
@@ -60,17 +61,39 @@ class Collection():
         self.n_search_days=self.n_search_days.days
         self.end_date = self.start_date.advance(self.n_search_days, 'day')
 
-        #COLLECTIONS
+        #COLLECTIONS    
         self.collection_l5=fexp_landsat_5PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
         self.collection_l7=fexp_landsat_7PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
         self.collection_l8=fexp_landsat_8PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
+        rad_l5 = fexp_trad_5PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
+        rad_l7 = fexp_trad_7PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
+        rad_l8 = fexp_trad_8PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
+        rad_collection = rad_l5.merge(rad_l7).merge(rad_l8)
 
         #LIST OF IMAGES
-        self.sceneListL5 = self.collection_l5.aggregate_array('system:index').getInfo()
-        self.sceneListL7 = self.collection_l7.aggregate_array('system:index').getInfo()
-        self.sceneListL8 = self.collection_l8.aggregate_array('system:index').getInfo()
+        self.sceneListL5 = self.collection_l5.aggregate_array('system:index')
+        self.sceneListL7 = self.collection_l7.aggregate_array('system:index')
+        self.sceneListL8 = self.collection_l8.aggregate_array('system:index')
 
-        self.collection = self.collection_l5.merge(self.collection_l7).merge(self.collection_l8)
+        #ALBEDO AND MASKS   
+        self.collection_l5 = self.collection_l5.map(f_albedoL5L7).map(f_cloudMaskL457_SR)   
+        self.collection_l7 = self.collection_l7.map(f_albedoL5L7).map(f_cloudMaskL457_SR)
+        self.collection_l8= self.collection_l8.map(f_albedoL8).map(f_cloudMaskL8_SR)
+
+        #JOIN COLLECTIONS
+        self.collection = self.collection_l5.merge(self.collection_l7).merge(self.collection_l8)  
+        filter_landsat_index =  ee.Filter.equals(leftField='LANDSAT_INDEX', rightField='LANDSAT_INDEX') 
+        join_by_landsat_index = ee.ImageCollection(
+            ee.Join.inner().apply(
+                self.collection, 
+                rad_collection, 
+                filter_landsat_index
+            ))
+        def get_img(feature):
+            return ee.Image.cat(feature.get("primary"), feature.get("secondary"))
+        
+        self.collection = join_by_landsat_index.map(get_img)  
+
         self.CollectionList=self.collection.sort("system:time_start").aggregate_array('system:index').getInfo()
         self.CollectionList_image = self.collection.aggregate_array('system:index').getInfo()
         self.count = self.collection.size().getInfo()
