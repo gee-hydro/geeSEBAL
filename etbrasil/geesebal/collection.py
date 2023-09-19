@@ -44,7 +44,8 @@ class Collection():
                  NDVI_cold=5,
                  Ts_cold=20,
                  NDVI_hot=10,
-                 Ts_hot=20):
+                 Ts_hot=20, 
+                 max_iterations=15):
 
         #INFORMATIONS
         self.path=path
@@ -56,6 +57,7 @@ class Collection():
         self.n_search_days=self.end_date - self.i_date
         self.n_search_days=self.n_search_days.days
         self.end_date = self.start_date.advance(self.n_search_days, 'day')
+        self.max_iterations = max_iterations
 
         #COLLECTIONS 
         self.collection_l5=fexp_landsat_5PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
@@ -91,7 +93,9 @@ class Collection():
         self.collection = join_by_landsat_index.map(get_img)  
 
         # Map the sebal algorithm to the image collection
-        sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot = Ts_hot)
+        sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, 
+                                NDVI_hot=NDVI_hot, Ts_hot = Ts_hot,
+                                max_iterations=max_iterations)
         self.collection_ET = self.collection.map(sebal_algorithm)
 
         self.CollectionList=self.collection.sort("system:time_start").aggregate_array('system:index')

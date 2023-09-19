@@ -31,7 +31,7 @@ from .endmembers import fexp_cold_pixel, fexp_hot_pixel
 from .evapotranspiration import fexp_et
 
 #SEBAL algorithm function
-def sebal(NDVI_cold=5, Ts_cold=20, NDVI_hot=10, Ts_hot=20):
+def sebal(NDVI_cold=5, Ts_cold=20, NDVI_hot=10, Ts_hot=20, max_iterations = 15):
     """SEBAL algorithm to be mapped to a collection.
     """
     def fsebal(image):
@@ -79,7 +79,7 @@ def sebal(NDVI_cold=5, Ts_cold=20, NDVI_hot=10, Ts_hot=20):
         date_string = _date.format("YYYY-MM-dd")
 
         image = fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, 
-        d_hot_pixel, date_string, geometryReducer)
+        d_hot_pixel, date_string, geometryReducer, max_iterations=max_iterations)
         image = fexp_et(image, Rn24hobs)
 
         # For backwards compatibility:
@@ -100,7 +100,8 @@ class Image():
                  NDVI_cold=5,
                  Ts_cold=20,
                  NDVI_hot=10,
-                 Ts_hot=20):
+                 Ts_hot=20,
+                 max_iterations=15):
 
         #GET INFORMATIONS FROM IMAGE
         self.image = ee.Image(image)
@@ -119,9 +120,10 @@ class Image():
         self.crs = self.image.projection().crs()
         self.transform = ee.List(ee.Dictionary(ee.Algorithms.Describe(self.image.projection())).get('transform'))
         self.date_string=self._date.format('YYYY-MM-dd')
-
         self.WRS_PATH = self.image.get("WRS_PATH")
         self.WRS_ROW = self.image.get("WRS_ROW")
+
+        self.max_iterations = max_iterations
 
         #ENDMEMBERS
         self.p_top_NDVI=ee.Number(NDVI_cold)
@@ -175,7 +177,9 @@ class Image():
             ))
         )
 
-        sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot=Ts_hot)
+        sebal_algorithm = sebal(NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, 
+                                NDVI_hot=NDVI_hot, Ts_hot=Ts_hot,
+                                max_iterations=max_iterations)
         self.image = sebal_algorithm(self.image.first())
 
         # TODO -- decide whether to keep these or not in the Image object.
