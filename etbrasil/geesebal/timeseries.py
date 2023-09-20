@@ -23,7 +23,7 @@ from datetime import date
 import datetime
 
 #FOLDERS
-from .landsatcollection import fexp_landsat_5Coordinate, fexp_landsat_7Coordinate, fexp_landsat_8Coordinate
+from .landsatcollection import fexp_landsat_5, fexp_landsat_7, fexp_landsat_8
 from .masks import (f_cloudMaskL457_SR,f_cloudMaskL8_SR,f_albedoL5L7,f_albedoL8)
 from .meteorology import get_meteorology
 from .tools import (fexp_spec_ind, fexp_lst_export,fexp_radlong_up, LST_DEM_correction,
@@ -62,9 +62,9 @@ class TimeSeries():
         self.end_date = self.start_date.advance(self.n_search_days, 'day')
 
         #COLLECTIONS
-        self.collection_l5=fexp_landsat_5Coordinate(self.start_date, self.end_date, self.coordinate, self.cloud_cover)
-        self.collection_l7=fexp_landsat_7Coordinate(self.start_date, self.end_date, self.coordinate, self.cloud_cover)
-        self.collection_l8=fexp_landsat_8Coordinate(self.start_date, self.end_date, self.coordinate, self.cloud_cover)
+        self.collection_l5=fexp_landsat_5(self.start_date, self.end_date, self.cloud_cover, coordinate=self.coordinate)
+        self.collection_l7=fexp_landsat_7(self.start_date, self.end_date, self.cloud_cover, coordinate=self.coordinate)
+        self.collection_l8=fexp_landsat_8(self.start_date, self.end_date, self.cloud_cover, coordinate=self.coordinate)
 
         #LIST OF IMAGES
         self.sceneListL5 = self.collection_l5.aggregate_array('system:index').getInfo()

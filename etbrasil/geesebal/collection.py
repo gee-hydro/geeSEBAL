@@ -21,8 +21,8 @@ import ee
 from datetime import date
 
 #FOLDERS
-from .landsatcollection import (fexp_landsat_5PathRow,fexp_landsat_7PathRow, fexp_landsat_8PathRow,
-fexp_trad_5PathRow, fexp_trad_7PathRow, fexp_trad_8PathRow)
+from .landsatcollection import (fexp_landsat_5,fexp_landsat_7, fexp_landsat_8,
+fexp_trad_5, fexp_trad_7, fexp_trad_8)
 from .masks import (f_cloudMaskL457_SR,f_cloudMaskL8_SR,f_albedoL5L7,f_albedoL8)
 from .image import sebal
 
@@ -39,17 +39,24 @@ class Collection():
                  month_e,
                  day_e,
                  cloud_cover,
-                 path,
-                 row,
+                 path=None,
+                 row=None,
+                 coordinate=None,
                  NDVI_cold=5,
                  Ts_cold=20,
                  NDVI_hot=10,
                  Ts_hot=20, 
                  max_iterations=15):
 
+        if not any([all([path,row]),coordinate]):
+            raise ValueError("Either coordinate or a combination of path/row should be specified.")
+        # ^ Otherwise user could request too many Landsat images by accident. 
+        spatial_filters = {"n_path":path, "n_row":row, "coordinate":coordinate}
+
         #INFORMATIONS
         self.path=path
         self.row=row
+        self.coordiate=coordinate
         self.cloud_cover=cloud_cover
         self.start_date = ee.Date.fromYMD(year_i,month_i,day_i)
         self.i_date=date(year_i,month_i,day_i)
@@ -60,12 +67,12 @@ class Collection():
         self.max_iterations = max_iterations
 
         #COLLECTIONS 
-        self.collection_l5=fexp_landsat_5PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
-        self.collection_l7=fexp_landsat_7PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
-        self.collection_l8=fexp_landsat_8PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
-        rad_l5 = fexp_trad_5PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
-        rad_l7 = fexp_trad_7PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
-        rad_l8 = fexp_trad_8PathRow(self.start_date, self.end_date, self.path, self.row, self.cloud_cover)
+        self.collection_l5=fexp_landsat_5(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
+        self.collection_l7=fexp_landsat_7(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
+        self.collection_l8=fexp_landsat_8(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
+        rad_l5 = fexp_trad_5(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
+        rad_l7 = fexp_trad_7(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
+        rad_l8 = fexp_trad_8(self.start_date, self.end_date, self.cloud_cover, **spatial_filters)
         rad_collection = rad_l5.merge(rad_l7).merge(rad_l8)
 
         #LIST OF IMAGES
