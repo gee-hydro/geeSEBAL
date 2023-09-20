@@ -30,6 +30,84 @@ from .tools import (fexp_spec_ind, fexp_lst_export,fexp_radlong_up, LST_DEM_corr
 fexp_radshort_down, fexp_radlong_down, fexp_radbalance, fexp_soil_heat,fexp_sensible_heat_flux)
 from .endmembers import fexp_cold_pixel, fexp_hot_pixel
 from .evapotranspiration import fexp_et
+from .collection import Collection
+
+class TimeSeriesAsync():
+    """Asynchronous geeSEBAL time series  
+
+    Example:
+    ```
+    point=ee.Geometry.Point([-47.4522, -16.240119])
+    geesebal_timeseries=TimeSeriesAsync(2000,1,1,2010,5,6,15,coordinate=point)
+
+    # Export tasks (recommended):
+    geesebal_timeseries.toDrive("sebal-time-series")  
+    geesebal_timeseries.toCloudStorage("sebal-time-series", "mybucket")  
+
+    # Synchronous retrieval (could get "Too many concurrent aggregations" error):
+    # https://developers.google.com/earth-engine/guides/debugging#too-many
+    et_list = geesebal_timeseries.List_ET.getInfo()
+    date_list = geesebal_timeseries.List_Date.getInfo()
+    landast_index_list = geesebal_timeseries.List_index.getInfo()
+    ```
+    """
+    def __init__(self,
+                 year_i,
+                 month_i,
+                 day_i,
+                 year_e,
+                 month_e,
+                 day_e,
+                 cloud_cover,
+                 coordinate,
+                 NDVI_cold=5,
+                 Ts_cold=20,
+                 NDVI_hot=10,
+                 Ts_hot=20):
+
+        geesebal_collection = Collection(year_i, month_i, day_i, year_e, month_e, day_e, cloud_cover,
+            coordinate=coordinate, NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot = Ts_hot)
+        self.Collection = geesebal_collection
+
+        et_collection = geesebal_collection.collection.select("ET_24h").map(
+        lambda img: img.set(
+                img.reduceRegion(
+                geometry=coordinate,
+                reducer="mean",
+                scale=30,
+                )
+        ).set({"date":img.date().format("YYYY-MM-dd'T'HH:mm:ss")}))
+        et_collection = et_collection.filter(ee.Filter.notNull(["ET_24h"]))
+
+        self.et_collection = et_collection
+
+        # For synchronous retrievals (use getInfo): 
+        # but the preferred method should be to create an Export task.
+        self.List_ET = et_collection.aggregate_array("ET_24h")
+        self.List_Date = et_collection.aggregate_array("date")
+        self.List_index = et_collection.aggregate_array("LANDSAT_INDEX")
+    
+    def toDrive(self, fileNamePrefix, folder=None, description=None):
+        """Starts a task to export the et_collection to drive"""
+        ee.batch.Export.table.toDrive(
+            collection = self.et_collection,
+            selectors=["date","LANDSAT_INDEX","ET_24h"],
+            fileFormat = "CSV",
+            description = description,
+            fileNamePrefix=fileNamePrefix,
+            folder=folder,
+        ).start()       
+
+    def toCloudStorage(self, fileNamePrefix, bucket, description=None):
+        """Starts a task to export the et_collection to cloud storage"""
+        ee.batch.Export.table.toCloudStorage(
+            collection = self.et_collection,
+            selectors=["date","LANDSAT_INDEX","ET_24h"],
+            fileFormat = "CSV",
+            description = description,
+            fileNamePrefix=fileNamePrefix,
+            bucket=bucket
+        ).start()       
 
 #TIMESRIES FUNCTION
 class TimeSeries():
