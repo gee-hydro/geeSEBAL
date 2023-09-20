@@ -63,10 +63,12 @@ class TimeSeriesAsync():
                  NDVI_cold=5,
                  Ts_cold=20,
                  NDVI_hot=10,
-                 Ts_hot=20):
+                 Ts_hot=20,
+                 max_iterations=15):
 
         geesebal_collection = Collection(year_i, month_i, day_i, year_e, month_e, day_e, cloud_cover,
-            coordinate=coordinate, NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot = Ts_hot)
+            coordinate=coordinate, NDVI_cold=NDVI_cold, Ts_cold=Ts_cold, NDVI_hot=NDVI_hot, Ts_hot = Ts_hot, 
+            max_iterations=max_iterations)
         self.Collection = geesebal_collection
 
         et_collection = geesebal_collection.collection.select("ET_24h").map(
