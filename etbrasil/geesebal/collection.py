@@ -56,7 +56,7 @@ class Collection():
         #INFORMATIONS
         self.path=path
         self.row=row
-        self.coordiate=coordinate
+        self.coordinate=coordinate
         self.cloud_cover=cloud_cover
         self.start_date = ee.Date.fromYMD(year_i,month_i,day_i)
         self.i_date=date(year_i,month_i,day_i)
