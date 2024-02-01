@@ -46,7 +46,7 @@ geeSEBAL_Image=Image(Image_ID)
 from etbrasil.geesebal import Collection
 
 #inputs= init Year, init Month, init dat, end Year, end Month, end day, Cloud Cover
-geeSEBAL_Collection=Collection(2000,1,1,2010,5,6,15)
+geeSEBAL_Collection=Collection(2000,1,1,2010,5,6,15,path=221,row=71)
 ```
 ### TimeSeries
 ```python
@@ -55,7 +55,7 @@ from etbrasil.eesebal import TimeSeries
 #inputs= init Year, init Month, init dat, end Year, end Month, end day, Cloud Cover,ee.Geometry.Point
 point=ee.Geometry.Point([-50.161317, -9.824870])
 
-geeSEBAL_Collection=TimeSeries(2000,1,1,2010,5,6,15,point)
+geeSEBAL_Collection=TimeSeries(2000,1,1,2010,5,6,15, coordinate=point)
 ```
 
 ## What is SEBAL?

@@ -457,8 +457,8 @@ def fexp_soil_heat(image):
     return image
 
     #SENSIBLE HEAT FLUX (H) [W M-2]
-def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, date_string, refpoly):
-
+def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, date_string, refpoly,
+max_iterations=15):
     #VEGETATION HEIGHTS  [M]
     n_veg_hight = ee.Number(3)
 
@@ -479,12 +479,12 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
     #TS HOT PIXEL
     n_Ts_hot = ee.Number(d_hot_pixel.get('temp'))
     #G HOT PIXEL
-    n_G_hot = ee.Number(d_hot_pixel.get('G').getInfo())
+    n_G_hot = ee.Number(d_hot_pixel.get('G'))
     #RN HOT PIXEL
-    n_Rn_hot = ee.Number(d_hot_pixel.get('Rn').getInfo())
+    n_Rn_hot = ee.Number(d_hot_pixel.get('Rn'))
     #LAT AND LON HOT PIXEL
-    n_long_hot = ee.Number(d_hot_pixel.get('x').getInfo())
-    n_lat_hot = ee.Number(d_hot_pixel.get('y').getInfo())
+    n_long_hot = ee.Number(d_hot_pixel.get('x'))
+    n_lat_hot = ee.Number(d_hot_pixel.get('y'))
     #POINT GEOMETRY
     p_hot_pix =  ee.Geometry.Point([n_long_hot, n_lat_hot])
 
@@ -532,15 +532,13 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
 
     #Z1 AND Z2 ARE HEIGHTS [M] ABOVE THE ZERO PLANE DISPLACEMENT
     #OF THE VEGETATION
-    z1= ee.Number(0.1);
-    z2= ee.Number(2);
+    z1= ee.Number(0.1)
+    z2= ee.Number(2)
     i_rah = i_ufric.expression(
       '(log(z2/z1))/(i_ufric*0.41)', {
               'z2' : z2,
               'z1': z1,
               'i_ufric':i_ufric }).rename('rah')
-
-    i_rah_first = i_rah.rename('rah_first')
 
     #AIR DENSITY HOT PIXEL
     n_ro_hot= (ee.Number(-0.0046).multiply(n_Ts_hot)).add(ee.Number(2.5538))
@@ -550,97 +548,100 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
     #SENSIBLE HEAT FLUX AT THE HOT PIXEL (H_hot)
     n_H_hot = ee.Number(n_Rn_hot).subtract(ee.Number(n_G_hot))
 
-    #ITERATIVE VARIABLES
-    n= ee.Number(1)
-    n_dif= ee.Number(1)
-    n_dif_min = ee.Number(0.1)
-    list_dif = ee.List([])
-    list_dT_hot = ee.List([])
-    list_rah_hot = ee.List([])
-    list_coef_a = ee.List([])
-    list_coef_b = ee.List([])
-
-    #NUMBER OF ITERATIVE STEPS: 15
-    #CAN BE CHANGED, BUT BE AWARE THAT
-    #A MINIMUM NUMBER OF ITERATIVE PROCESSES
-    #IS NECESSARY TO ACHIEVE RAH AND H ESTIMATIONS
-
     #========INIT ITERATION========#
-    for n in range(15):
-
-    #AERODYNAMIC RESISTANCE TO HEAT TRANSPORT
-    #IN HOT PIXEL
+    def sebal_iteration(img, list):
+        """Computes one iteration of the sebal algorithm
+        
+        Inputs: 
+            - img: Dummy ee.Image
+            - list: list of ee.Images. Each image contains the following bands:
+                - rah 
+                - ufric_star
+                - dT
+                - H
+                - ro
+        """
+        # Previous iteration values
+        previous_img = ee.Image(ee.List(list).get(-1))
+        iteration = previous_img.select("iteration")
+        i_rah = previous_img.select("rah")
+        i_ufric = previous_img.select("ufric_star")
+        
+        #AERODYNAMIC RESISTANCE TO HEAT TRANSPORT
+        #IN HOT PIXEL
         d_rah_hot = i_rah.reduceRegion(
             reducer= ee.Reducer.first(),
             geometry= p_hot_pix,
             scale= 30,
-            maxPixels=9000000000)
+            maxPixels=9000000000)  
 
-        n_rah_hot =   ee.Number(d_rah_hot.get('rah'))
+        n_rah_hot =   ee.Number(d_rah_hot.get('rah'))  
 
-    #NEAR SURFACE TEMPERATURE DIFFERENCE IN HOT PIXEL (dT= Tz1-Tz2)  [K]
-    # dThot= Hhot*rah/(ρCp)
-        n_dT_hot = (n_H_hot.multiply(n_rah_hot)).divide(n_ro_hot.multiply(n_Cp))
+        #NEAR SURFACE TEMPERATURE DIFFERENCE IN HOT PIXEL (dT= Tz1-Tz2)  [K]
+        # dThot= Hhot*rah/(ρCp)
+        n_dT_hot = (n_H_hot.multiply(n_rah_hot)).divide(n_ro_hot.multiply(n_Cp))  
 
-    #NEAR SURFACE TEMPERATURE DIFFERENCE IN COLD PIXEL (dT= tZ1-tZ2)
-        n_dT_cold = ee.Number(0)
-    # dT =  aTs + b
-    #ANGULAR COEFFICIENT
-        n_coef_a = (n_dT_cold.subtract(n_dT_hot)).divide(n_Ts_cold.subtract(n_Ts_hot))
+        #NEAR SURFACE TEMPERATURE DIFFERENCE IN COLD PIXEL (dT= tZ1-tZ2)
+        n_dT_cold = ee.Number(0)   
+        # dT =  aTs + b
+        
+        #ANGULAR COEFFICIENT
+        n_coef_a = (n_dT_cold.subtract(n_dT_hot)).divide(n_Ts_cold.subtract(n_Ts_hot)) 
 
-    #LINEAR COEFFICIENT
-        n_coef_b = n_dT_hot.subtract(n_coef_a.multiply(n_Ts_hot))
+        #LINEAR COEFFICIENT
+        n_coef_b = n_dT_hot.subtract(n_coef_a.multiply(n_Ts_hot)) 
 
-    #dT FOR EACH PIXEL [K]
-        i_lst_med = image.select('T_LST_DEM')
+        #dT FOR EACH PIXEL [K]
+        i_lst_med = image.select('T_LST_DEM')  # this doesn't seem to change?? -- 
         i_dT_int = ee.Image(0).clip(refpoly).expression(
             '(n_coef_a * i_lst_med) + n_coef_b', {
             'n_coef_a' : n_coef_a,
             'n_coef_b': n_coef_b,
-            'i_lst_med':i_lst_med }).rename('dT')
+            'i_lst_med':i_lst_med }).rename('dT')   
 
-    #AIR TEMPERATURE (TA) FOR EACH PIXEL (TA=TS-dT) [K]
+        #AIR TEMPERATURE (TA) FOR EACH PIXEL (TA=TS-dT) [K]
         i_Ta = i_lst_med.expression(
             'i_lst_med - i_dT_int', {
             'i_lst_med' : i_lst_med,
-            'i_dT_int': i_dT_int})
+            'i_dT_int': i_dT_int})        
 
-    #AIR DENSITY (ro) [KM M-3]
+        #AIR DENSITY (ro) [KM M-3]
         i_ro = i_Ta.expression(
-    '(-0.0046 * i_Ta) + 2.5538', {
+            '(-0.0046 * i_Ta) + 2.5538', {
             'i_Ta' : i_Ta}).rename('ro')
 
-    #SENSIBLE HEAT FLUX (H) FOR EACH PIXEL  [W M-2]
+        #SENSIBLE HEAT FLUX (H) FOR EACH PIXEL  [W M-2]
         i_H_int = i_dT_int.expression(
-      '(i_ro*n_Cp*i_dT_int)/i_rah', {
+             '(i_ro*n_Cp*i_dT_int)/i_rah', {
               'i_ro' : i_ro,
               'n_Cp': n_Cp,
               'i_dT_int':i_dT_int,
-              'i_rah':i_rah }).rename('H')
-    #GET VALUE
+              'i_rah':i_rah }).rename('H')  
+
+        #GET VALUE
         d_H_int = i_H_int.reduceRegion(
             reducer= ee.Reducer.first(),
            geometry= p_hot_pix,
             scale= 30,
-            maxPixels=9000000000)
-        n_H_int =   ee.Number(d_H_int.get('H'))
+            maxPixels=9000000000)               
+        n_H_int =  ee.Number(d_H_int.get('H'))  
 
-    #MONIN-OBUKHOV LENGTH (L)
-    #FOR STABILITY CONDITIONS OF THE ATMOSPHERE IN THE ITERATIVE PROCESS
+        #MONIN-OBUKHOV LENGTH (L)
+        #FOR STABILITY CONDITIONS OF THE ATMOSPHERE IN THE ITERATIVE PROCESS
         i_L_int = i_dT_int.expression(
                 '-(i_ro*n_Cp*(i_ufric**3)*i_lst_med)/(0.41*9.81*i_H_int)',
                 {'i_ro' : i_ro,
                  'n_Cp': n_Cp,
                  'i_ufric':i_ufric,
                  'i_lst_med':i_lst_med,
-                 'i_H_int':i_H_int }).rename('L')
+                 'i_H_int':i_H_int }).rename('L') 
 
-    #STABILITY CORRECTIONS FOR MOMENTUM AND HEAT TRANSPORT
-    #PAULSON (1970)
-    #WEBB (1970)
-        img = ee.Image(0).clip(refpoly);
+        #STABILITY CORRECTIONS FOR MOMENTUM AND HEAT TRANSPORT
+        #PAULSON (1970)
+        #WEBB (1970)
+        img = ee.Image(0).clip(refpoly)
 
-    #STABILITY CORRECTIONS FOR STABLE CONDITIONS
+        #STABILITY CORRECTIONS FOR STABLE CONDITIONS
         i_psim_200 = img.expression(
                 '-5*(hight/i_L_int)', {'hight' : ee.Number(200),'i_L_int': i_L_int}).rename('psim_200')
         i_psih_2 = img.expression(
@@ -648,7 +649,7 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
         i_psih_01 = img.expression(
                 '-5*(hight/i_L_int)',{'hight' : ee.Number(0.1),'i_L_int': i_L_int}).rename('psih_01')
 
-    #FOR DIFFERENT HEIGHT
+        #FOR DIFFERENT HEIGHT
         i_x200 = i_L_int.expression(
                 '(1-(16*(hight/i_L_int)))**0.25',
                 {'hight' : ee.Number(200),'i_L_int': i_L_int}).rename('i_x200')
@@ -659,7 +660,7 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
                 '(1-(16*(hight/i_L_int)))**0.25',
                 {'hight' : ee.Number(0.1),'i_L_int': i_L_int})
 
-    #STABILITY CORRECTIONS FOR UNSTABLE CONDITIONS
+        #STABILITY CORRECTIONS FOR UNSTABLE CONDITIONS
         i_psimu_200 = i_x200.expression(
                 '2*log((1+i_x200)/2)+log((1+i_x200**2)/2)-2*atan(i_x200)+0.5*pi',
                 {'i_x200' : i_x200,'pi': ee.Number(3.14159265)})
@@ -670,24 +671,15 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
                 '2*log((1+i_x01**2)/2)',
                 {'i_x01' : i_x01})
 
-    #FOR EACH PIXEL
+        #FOR EACH PIXEL
         i_psim_200 = i_psim_200.where(i_L_int.lt(0), i_psimu_200)
         i_psih_2 = i_psih_2.where(i_L_int.lt(0), i_psihu_2)
         i_psih_01 = i_psih_01.where(i_L_int.lt(0), i_psihu_01)
         i_psim_200 = i_psim_200.where(i_L_int.eq(0), 0)
-        i_psih_2 = i_psih_2.where(i_L_int.eq(0), 0);
+        i_psih_2 = i_psih_2.where(i_L_int.eq(0), 0)
         i_psih_01 = i_psih_01.where(i_L_int.eq(0), 0)
 
-        if n==1:
-            i_psim_200_exp = i_psim_200
-            i_psih_2_exp = i_psih_2
-            i_psih_01_exp = i_psih_01
-            i_L_int_exp = i_L_int
-            i_H_int_exp = i_H_int
-            i_dT_int_exp = i_dT_int
-            i_rah_exp = i_rah
-
-    #CORRECTED VALUE FOR THE FRICTION VELOCITY (i_ufric) [M S-1]
+        #CORRECTED VALUE FOR THE FRICTION VELOCITY (i_ufric) [M S-1]
         i_ufric = i_ufric.expression(
                 '(u200*0.41)/(log(hight/i_zom)-i_psim_200)',{
                  'u200' : i_u200,
@@ -695,44 +687,57 @@ def fexp_sensible_heat_flux(image, ux, UR, Rn24hobs, n_Ts_cold, d_hot_pixel, dat
                  'i_zom':i_zom,
                  'i_psim_200': i_psim_200}).rename('ufric_star')
 
-    #CORRECTED VALUE FOR THE AERODYNAMIC RESISTANCE TO THE HEAT TRANSPORT (rah) [S M-1]
+        #CORRECTED VALUE FOR THE AERODYNAMIC RESISTANCE TO THE HEAT TRANSPORT (rah) [S M-1]
         i_rah = i_rah.expression(
                 '(log(z2/z1)-psi_h2+psi_h01)/(i_ufric*0.41)',
                 {'z2' : z2,'z1': z1, 'i_ufric':i_ufric, 'psi_h2':i_psih_2, 'psi_h01':i_psih_01}).rename('rah')
-        if n==1:
-            n_dT_hot_old = n_dT_hot
-            n_rah_hot_old = n_rah_hot
-            n_dif = ee.Number(1)
 
-        if n > 1:
-            n_dT_hot_abs = n_dT_hot.abs()
-            n_dT_hot_old_abs = n_dT_hot_old.abs()
-            n_rah_hot_abs = n_rah_hot.abs()
-            n_rah_hot_old_abs = n_rah_hot_old.abs()
-            n_dif=(n_dT_hot_abs.subtract(n_dT_hot_old_abs).add(n_rah_hot_abs).subtract(n_rah_hot_old_abs)).abs()
-            n_dT_hot_old = n_dT_hot
-            n_rah_hot_old = n_rah_hot
+        iteration = iteration.add(1)
 
-        #INSERT EACH ITERATION VALUE INTO A LIST
-        list_dif = list_dif.add(n_dif);
-        list_coef_a = list_coef_a.add(n_coef_a)
-        list_coef_b = list_coef_b.add(n_coef_b)
-        list_dT_hot = list_dT_hot.add(n_dT_hot)
-        list_rah_hot = list_rah_hot.add(n_rah_hot)
+        updatedImg = (iteration
+        .addBands(i_ufric)    # ufric_star
+        .addBands(i_rah)      # rah
+        .addBands(i_dT_int)   # dT
+        .addBands(i_H_int)    # H
+        .addBands(i_ro)       # ro
+        .addBands(i_zom)      # zom
+        )
+        return ee.List(list).add(updatedImg)
 
-    #=========END ITERATION =========#
+    # Prepare an initial image containing the necessary initial variables,
+    # and a dummy image collection
+    initial_img = (ee.Image(0).rename("iteration")
+        .addBands(i_ufric.rename("ufric_star"))  # "ufric_star"
+        .addBands(i_rah)    # "rah"
+    )
+    iterStart = ee.List([initial_img])  
+    numList = ee.List.repeat(1, max_iterations)
+    def zeroImg(f):
+        return ee.Image(0)
+    dummyIC = ee.ImageCollection(numList.map(zeroImg))
 
-    #GET FINAL rah, dT AND H
-    i_rah_final = i_rah.rename('rah') #[SM-1]
-    i_dT_final = i_dT_int.rename('dT') #[K]
+    # Call the iterative function using the dummy image collection and the initial estimates:
+    iterListRes = ee.List(dummyIC.iterate(sebal_iteration, iterStart))
+    final_image = ee.Image(iterListRes.get(-1))  # The result is the last value of this list. 
+
+    # Get the final values required to calculate H:
+    i_rah_final = final_image.select('rah') # [SM-1]
+    i_dT_final = final_image.select('dT') # [K]
+    i_H_int = final_image.select("H") # [W M-2]
+    i_ro = final_image.select("ro")
+    i_zom = final_image.select("zom")
+
     i_H_final = i_H_int.expression(  #[W M-2]
             '(i_ro*n_Cp*i_dT_int)/i_rah',{
              'i_ro' : i_ro,
              'n_Cp': n_Cp,
              'i_dT_int':i_dT_final,
              'i_rah':i_rah_final }).rename('H')
-
-    #ADD BANDS
-    image = image.addBands([i_H_final, i_rah_final, i_dT_final,
-                            i_rah_first,image.select('zom'),image.select('u_fr'),i_ufric])
-    return image
+    
+    return (image
+        .addBands(final_image.select("iteration"))
+        .addBands(final_image.select("dT"))
+        .addBands(final_image.select("ufric_star"))
+        .addBands(i_zom)  # zom
+        .addBands(i_H_final) # H -- this is what we need for ET.
+    )
